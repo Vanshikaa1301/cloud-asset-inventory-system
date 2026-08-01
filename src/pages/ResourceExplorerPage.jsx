@@ -27,8 +27,8 @@ function TreeNode({ node, depth = 0, selected, onSelect, searchQuery }) {
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={() => { if (hasChildren) setExpanded(!expanded); onSelect(node); }}
       >
-        {hasChildren ? (expanded ? <ChevronDown className="w-4 h-4 flex-shrink-0 text-gray-400" /> : <ChevronRight className="w-4 h-4 flex-shrink-0 text-gray-400" />) : <span className="w-4" />}
-        <Icon className="w-4 h-4 flex-shrink-0 text-gray-500 dark:text-gray-400" />
+        {hasChildren ? (expanded ? <ChevronDown className="w-4 h-4 shrink-0 text-gray-400" /> : <ChevronRight className="w-4 h-4 shrink-0 text-gray-400" />) : <span className="w-4" />}
+        <Icon className="w-4 h-4 shrink-0 text-gray-500 dark:text-gray-400" />
         <span className="truncate flex-1">{node.name}</span>
         {node.status && <Badge value={node.status} />}
       </div>

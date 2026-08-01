@@ -38,7 +38,7 @@ export default function LandingPage() {
       </nav>
 
       <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary-50 to-white dark:from-gray-900 dark:to-gray-900" />
+        <div className="absolute inset-0 bg-linear-to-br from-primary-50 to-white dark:from-gray-900 dark:to-gray-900" />
         <div className="absolute inset-0 opacity-30">
           <div className="absolute top-20 left-1/4 w-96 h-96 bg-primary-200 rounded-full blur-3xl" />
           <div className="absolute bottom-10 right-1/4 w-80 h-80 bg-blue-200 rounded-full blur-3xl" />
@@ -111,7 +111,7 @@ export default function LandingPage() {
               <div className="space-y-4">
                 {['Real-time asset discovery and monitoring', 'Automated compliance checks and reporting', 'Multi-account and multi-region support', 'Role-based access control and audit logs'].map((item) => (
                   <div key={item} className="flex items-center gap-3">
-                    <div className="w-5 h-5 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                    <div className="w-5 h-5 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center shrink-0">
                       <Check className="w-3 h-3 text-green-600 dark:text-green-400" />
                     </div>
                     <span className="text-gray-700 dark:text-gray-300 text-sm">{item}</span>

@@ -27,7 +27,7 @@ function RelationshipDiagram({ asset }) {
         <div className="text-primary-600 dark:text-primary-400 font-semibold">{asset.name}</div>
         {(relations[asset.type] || []).map((rel, i) => (
           <div key={i} className="flex items-center gap-2 text-gray-600 dark:text-gray-400 pl-4">
-            <GitBranch className="w-3 h-3 flex-shrink-0" />
+            <GitBranch className="w-3 h-3 shrink-0" />
             <span>{rel}</span>
           </div>
         ))}
@@ -172,7 +172,7 @@ export default function AssetDetailsPage() {
           <div className="space-y-4">
             {activityLogs.slice(0, 6).map((log) => (
               <div key={log.id} className="flex items-start gap-3 pb-4 border-b border-gray-100 dark:border-gray-700/50 last:border-0">
-                <div className="w-2 h-2 mt-1.5 rounded-full bg-primary-500 flex-shrink-0" />
+                <div className="w-2 h-2 mt-1.5 rounded-full bg-primary-500 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-800 dark:text-gray-200">{log.action}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{log.resource} • {log.user} • {new Date(log.timestamp).toLocaleString()}</p>
