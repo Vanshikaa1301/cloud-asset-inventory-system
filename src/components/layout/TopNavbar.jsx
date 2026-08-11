@@ -129,13 +129,13 @@ export default function TopNavbar({ onMenuClick }) {
               <div className="w-8 h-8 bg-primary-500 rounded-full flex items-center justify-center">
                 <span className="text-white text-sm font-medium">{user?.name?.charAt(0) || 'A'}</span>
               </div>
-              <span className="hidden md:block text-sm font-medium text-gray-700 dark:text-gray-200">{user?.name || 'Kabir'}</span>
+              <span className="hidden md:block text-sm font-medium text-gray-700 dark:text-gray-200">{user?.name || 'Aditya'}</span>
               <ChevronDown className="w-4 h-4 text-gray-500 hidden md:block" />
             </button>
             {showProfile && (
               <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{user?.name || 'Kabir'}</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">{user?.name || 'Aditya'}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email || 'admin@company.com'}</p>
                 </div>
                 <div className="py-1">
