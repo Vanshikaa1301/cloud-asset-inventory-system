@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Sensitive files
+.env
+.env.*
+*.pem
+*.key
+
+# Backup/temp files
+*.backup
+*.backup-*
+*.save

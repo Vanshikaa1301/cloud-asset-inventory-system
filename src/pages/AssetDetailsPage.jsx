@@ -1,208 +1,459 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { assets, activityLogs, costTrendData } from '../data/mockData';
+import {
+  ArrowLeft,
+  Clock,
+  Server,
+  Database,
+  Cloud,
+  Network,
+  Shield,
+  Tag,
+} from 'lucide-react';
+
 import Badge from '../components/common/Badge';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { ArrowLeft, GitBranch, Clock, DollarSign, Tag, Server } from 'lucide-react';
-import { useTheme } from '../context/ThemeContext';
+import LoadingSpinner from '../components/common/LoadingSpinner';
+import ErrorState from '../components/common/ErrorState';
+import { getAsset } from '../services/api';
 
-const tabs = ['Overview', 'Security', 'Relationships', 'Activity', 'Cost'];
+function getAssetIcon(type) {
+  switch (type) {
+    case 'S3':
+      return Database;
+    case 'VPC':
+      return Cloud;
+    case 'SUBNET':
+      return Network;
+    case 'EC2':
+      return Server;
+    case 'Lambda':
+      return Server;
+    default:
+      return Cloud;
+  }
+}
 
-function RelationshipDiagram({ asset }) {
-  const relations = {
-    'EC2 Instance': ['Security Group → sg-web-prod', 'VPC → vpc-prod-main', 'Subnet → subnet-001', 'ENI → eni-0abc123def456789'],
-    'S3 Bucket': ['IAM Role → S3-FullAccess', 'Application → Backend Service', 'VPC Endpoint → vpce-abc'],
-    'RDS Database': ['VPC → vpc-prod-main', 'Subnet Group → prod-db-subnets', 'Security Group → sg-db-prod', 'IAM Role → RDS-Monitoring'],
-    'Lambda Function': ['VPC → vpc-prod-main', 'IAM Role → Lambda-Execution', 'CloudWatch Logs → /aws/lambda/payment-processing', 'Event Source → API Gateway'],
-    'VPC': ['Subnets × 8', 'Route Tables × 4', 'Internet Gateway → igw-abc', 'NAT Gateway × 2'],
-    'IAM Role': ['Attached Instances × 3', 'Managed Policies × 3', 'Inline Policies × 1'],
-    'Security Group': ['VPC → vpc-prod-main', 'Attached Instances × 5'],
-    'Load Balancer': ['Target Groups × 3', 'SSL Certificates × 2', 'VPC → vpc-prod-main', 'WAF → waf-prod'],
-    'Network Interface': ['Instance → production-web-server', 'Subnet → subnet-001', 'Security Group → sg-web-prod'],
-  };
+function formatLabel(key) {
+  return key
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, (char) => char.toUpperCase());
+}
+
+function formatValue(value) {
+  if (value === null || value === undefined || value === '') {
+    return 'N/A';
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No';
+  }
+
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value, null, 2);
+  }
+
+  return String(value);
+}
+
+function RelationshipSection({ asset }) {
+  const relationships = [];
+
+  if (asset.vpcId) {
+    relationships.push(['VPC', asset.vpcId]);
+  }
+
+  if (asset.subnetId) {
+    relationships.push(['Subnet', asset.subnetId]);
+  }
+
+  if (asset.securityGroups?.length) {
+    asset.securityGroups.forEach((group) => {
+      relationships.push([
+        'Security Group',
+        `${group.groupName || 'Unknown'} (${group.groupId || 'N/A'})`,
+      ]);
+    });
+  }
+
+  if (relationships.length === 0) {
+    return (
+      <div className="text-sm text-gray-500 dark:text-gray-400">
+        No relationship information available for this asset.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
-      <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Resource Relationships</h4>
-      <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 font-mono text-sm space-y-2">
-        <div className="text-primary-600 dark:text-primary-400 font-semibold">{asset.name}</div>
-        {(relations[asset.type] || []).map((rel, i) => (
-          <div key={i} className="flex items-center gap-2 text-gray-600 dark:text-gray-400 pl-4">
-            <GitBranch className="w-3 h-3 shrink-0" />
-            <span>{rel}</span>
-          </div>
-        ))}
-      </div>
+      {relationships.map(([label, value], index) => (
+        <div
+          key={`${label}-${value}-${index}`}
+          className="flex items-center justify-between gap-4 text-sm py-2 border-b border-gray-100 dark:border-gray-700/50 last:border-0"
+        >
+          <span className="text-gray-500 dark:text-gray-400">
+            {label}
+          </span>
+
+          <span className="font-medium text-gray-900 dark:text-white text-right font-mono">
+            {value}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
 
 export default function AssetDetailsPage() {
-  const { theme } = useTheme();
-  const isDark = theme === 'dark';
-  const gridStroke = isDark ? '#334155' : '#e5e7eb';
   const { id } = useParams();
-  const [activeTab, setActiveTab] = useState('Overview');
-  const asset = assets.find((a) => a.id === id) || assets[0];
+
+  const [asset, setAsset] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    loadAsset();
+  }, [id]);
+
+  async function loadAsset() {
+    try {
+      setLoading(true);
+      setError('');
+      setAsset(null);
+
+      const response = await getAsset(id);
+
+      setAsset(response.asset || response.data || null);
+
+      if (!response.asset && !response.data) {
+        throw new Error('Asset was not found');
+      }
+    } catch (err) {
+      console.error('Asset details error:', err);
+      setError(err.message || 'Failed to load asset details');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const Icon = useMemo(
+    () => getAssetIcon(asset?.assetType),
+    [asset?.assetType]
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-4">
+        <Link
+          to="/dashboard/assets"
+          className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Inventory
+        </Link>
+
+        <ErrorState message={error} />
+      </div>
+    );
+  }
+
+  if (!asset) {
+    return (
+      <div className="space-y-4">
+        <Link
+          to="/dashboard/assets"
+          className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back to Inventory
+        </Link>
+
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-10 text-center text-gray-500">
+          Asset not found.
+        </div>
+      </div>
+    );
+  }
+
+  const excludedFields = new Set([
+    'assetId',
+    'assetName',
+    'assetType',
+    'provider',
+    'region',
+    'status',
+    'lastScanned',
+    'tags',
+    'securityGroups',
+    'vpcId',
+    'subnetId',
+  ]);
+
+  const configurationFields = Object.entries(asset).filter(
+    ([key, value]) =>
+      !excludedFields.has(key) &&
+      value !== null &&
+      value !== undefined &&
+      value !== ''
+  );
 
   return (
     <div className="space-y-6">
-        <Link to="/dashboard/assets" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-        <ArrowLeft className="w-4 h-4" /> Back to Inventory
+      <Link
+        to="/dashboard/assets"
+        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        Back to Inventory
       </Link>
 
+      {/* Header */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div className="flex items-start gap-4">
             <div className="p-3 bg-primary-50 dark:bg-primary-900/20 rounded-xl">
-              <Server className="w-8 h-8 text-primary-500" />
+              <Icon className="w-8 h-8 text-primary-500" />
             </div>
+
             <div>
-              <h1 className="text-xl font-bold text-gray-900 dark:text-white">{asset.name}</h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400 font-mono mt-0.5">{asset.resourceId}</p>
-              <div className="flex flex-wrap items-center gap-2 mt-2">
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+                {asset.assetName || asset.assetId}
+              </h1>
+
+              <p className="text-sm text-gray-500 dark:text-gray-400 font-mono mt-1">
+                {asset.assetId}
+              </p>
+
+              <div className="flex flex-wrap items-center gap-2 mt-3">
                 <Badge value={asset.status} />
-                <span className="text-xs text-gray-500 dark:text-gray-400">{asset.type}</span>
+
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {asset.assetType}
+                </span>
+
                 <span className="text-xs text-gray-400">•</span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">{asset.provider}</span>
+
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {asset.provider}
+                </span>
+
                 <span className="text-xs text-gray-400">•</span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">{asset.region}</span>
+
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {asset.region}
+                </span>
               </div>
             </div>
           </div>
+
           <div className="text-sm text-gray-500 dark:text-gray-400">
-            <p>Last discovered: {new Date(asset.lastScanned).toLocaleString()}</p>
-            <p>Created: {new Date(asset.creationDate).toLocaleDateString()}</p>
+            <p>
+              Last scanned:{' '}
+              {asset.lastScanned
+                ? new Date(asset.lastScanned).toLocaleString()
+                : 'N/A'}
+            </p>
+
+            {asset.creationDate && (
+              <p className="mt-1">
+                Created:{' '}
+                {new Date(asset.creationDate).toLocaleDateString()}
+              </p>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="border-b border-gray-200 dark:border-gray-700">
-        <div className="flex gap-0 overflow-x-auto">
-          {tabs.map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-              activeTab === tab ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
-            }`}>{tab}</button>
-          ))}
-        </div>
-      </div>
+      {/* Overview */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
+            Asset Information
+          </h3>
 
-      {activeTab === 'Overview' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Asset Information</h3>
-            <div className="space-y-3">
-              {[
-                ['Owner', asset.owner],
-                ['Environment', asset.environment],
-                ['Provider', asset.provider],
-                ['Region', asset.region],
-                ['Created', new Date(asset.creationDate).toLocaleDateString()],
-              ].map(([k, v]) => (
-                <div key={k} className="flex justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">{k}</span>
-                  <span className="font-medium text-gray-900 dark:text-white">{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Configuration Details</h3>
-            <div className="space-y-3">
-              {Object.entries(asset.config).map(([k, v]) => (
-                <div key={k} className="flex justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400 capitalize">{k.replace(/([A-Z])/g, ' $1')}</span>
-                  <span className="font-medium text-gray-900 dark:text-white text-right">{String(v)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 lg:col-span-2">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2"><Tag className="w-4 h-4" /> Tags</h3>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(asset.tags).map(([k, v]) => (
-                <span key={k} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
-                  {k}: {v}
+          <div className="space-y-3">
+            {[
+              ['Asset ID', asset.assetId],
+              ['Asset Name', asset.assetName],
+              ['Asset Type', asset.assetType],
+              ['Provider', asset.provider],
+              ['Region', asset.region],
+              ['Status', asset.status],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="flex justify-between gap-4 text-sm py-1"
+              >
+                <span className="text-gray-500 dark:text-gray-400">
+                  {label}
                 </span>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {activeTab === 'Security' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Security Status</h3>
-            <div className="space-y-4">
-              {[
-                ['Encryption', asset.security.encrypted, asset.security.encrypted ? 'Encrypted' : 'Not Encrypted'],
-                ['Public Access', asset.security.publicAccess, asset.security.publicAccess ? 'Publicly Accessible' : 'Private'],
-                ['Compliance Score', true, `${asset.security.complianceScore}%`],
-              ].map(([label, ok, value]) => (
-                <div key={label} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">{label}</span>
-                  <span className={`text-sm font-medium ${ok ? (label === 'Public Access' && asset.security.publicAccess ? 'text-red-500' : 'text-green-600 dark:text-green-400') : 'text-red-500'}`}>{value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Compliance Checks</h3>
-            <div className="space-y-3">
-              {['Encryption at rest enabled', 'Access logging configured', 'Network isolation verified', 'Backup retention policy'].map((check, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${i < 3 ? 'bg-green-500' : 'bg-yellow-500'}`} />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{check}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'Relationships' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-          <RelationshipDiagram asset={asset} />
-        </div>
-      )}
-
-      {activeTab === 'Activity' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2"><Clock className="w-4 h-4" /> Activity Timeline</h3>
-          <div className="space-y-4">
-            {activityLogs.slice(0, 6).map((log) => (
-              <div key={log.id} className="flex items-start gap-3 pb-4 border-b border-gray-100 dark:border-gray-700/50 last:border-0">
-                <div className="w-2 h-2 mt-1.5 rounded-full bg-primary-500 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-800 dark:text-gray-200">{log.action}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{log.resource} • {log.user} • {new Date(log.timestamp).toLocaleString()}</p>
-                </div>
+                <span className="font-medium text-gray-900 dark:text-white text-right">
+                  {label === 'Status' ? (
+                    <Badge value={value} />
+                  ) : (
+                    formatValue(value)
+                  )}
+                </span>
               </div>
             ))}
           </div>
         </div>
-      )}
 
-      {activeTab === 'Cost' && (
-        <div className="space-y-6">
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2"><DollarSign className="w-4 h-4" /> Estimated Monthly Cost</h3>
-            <p className="text-3xl font-bold text-gray-900 dark:text-white mt-3">${asset.cost.monthly.toLocaleString()}/mo</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Cost Trend</h3>
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={costTrendData}>
-                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-                <XAxis dataKey="month" tick={{ fontSize: 12, fill: isDark ? '#94a3b8' : '#6b7280' }} />
-                <YAxis tick={{ fontSize: 12, fill: isDark ? '#94a3b8' : '#6b7280' }} tickFormatter={(v) => `$${v}`} />
-                <Tooltip formatter={(v) => [`$${v}`, 'Cost']} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }} cursor={false} />
-                <Line type="monotone" dataKey="cost" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6', r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">
+            AWS Configuration
+          </h3>
+
+          <div className="space-y-3">
+            {configurationFields.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                No additional configuration data available.
+              </p>
+            ) : (
+              configurationFields.map(([key, value]) => (
+                <div
+                  key={key}
+                  className="flex justify-between gap-4 text-sm py-1 border-b border-gray-100 dark:border-gray-700/50 last:border-0"
+                >
+                  <span className="text-gray-500 dark:text-gray-400 capitalize">
+                    {formatLabel(key)}
+                  </span>
+
+                  <span className="font-medium text-gray-900 dark:text-white text-right max-w-[60%] break-words">
+                    {Array.isArray(value)
+                      ? value.map((item) => (
+                          <span
+                            key={item.groupId || JSON.stringify(item)}
+                            className="block"
+                          >
+                            {typeof item === 'object'
+                              ? `${item.groupName || ''} ${
+                                  item.groupId || ''
+                                }`
+                              : String(item)}
+                          </span>
+                        ))
+                      : formatValue(value)}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
-      )}
+
+        {/* Relationships */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <Network className="w-4 h-4" />
+            Relationships
+          </h3>
+
+          <RelationshipSection asset={asset} />
+        </div>
+
+        {/* Security */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <Shield className="w-4 h-4" />
+            Security Information
+          </h3>
+
+          <div className="space-y-3">
+            {asset.encryption && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">
+                  Encryption
+                </span>
+
+                <span className="font-medium text-gray-900 dark:text-white">
+                  {asset.encryption}
+                </span>
+              </div>
+            )}
+
+            {asset.publicAccess && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">
+                  Public Access
+                </span>
+
+                <span
+                  className={`font-medium ${
+                    asset.publicAccess === 'Public'
+                      ? 'text-red-500'
+                      : 'text-gray-900 dark:text-white'
+                  }`}
+                >
+                  {asset.publicAccess}
+                </span>
+              </div>
+            )}
+
+            {!asset.encryption && !asset.publicAccess && (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                No security-specific information is available for this asset.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Tags */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <Tag className="w-4 h-4" />
+          Tags
+        </h3>
+
+        {asset.tags && Object.keys(asset.tags).length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(asset.tags).map(([key, value]) => (
+              <span
+                key={key}
+                className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+              >
+                {key}: {value}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            No tags configured.
+          </p>
+        )}
+      </div>
+
+      {/* Scan information */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <Clock className="w-4 h-4" />
+          Discovery Information
+        </h3>
+
+        <div className="text-sm">
+          <span className="text-gray-500 dark:text-gray-400">
+            Last discovered by AWS inventory scan:
+          </span>
+
+          <span className="ml-2 font-medium text-gray-900 dark:text-white">
+            {asset.lastScanned
+              ? new Date(asset.lastScanned).toLocaleString()
+              : 'N/A'}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
